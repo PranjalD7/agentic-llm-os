@@ -1,19 +1,26 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchTasks, fetchTask, createTask, approveTask, rejectTask } from './api'
 import TaskList from './components/TaskList'
 import TaskDetail from './components/TaskDetail'
+
+const TERMINAL_STATES = new Set(['SUCCESS', 'FAILED', 'CANCELLED'])
 
 export default function App() {
   const [tasks, setTasks] = useState([])
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [selectedTask, setSelectedTask] = useState(null)
   const [loadingList, setLoadingList] = useState(false)
-  const [loadingDetail, setLoadingDetail] = useState(false)
   const [listError, setListError] = useState(null)
 
-  // Load the task list
-  const loadTasks = useCallback(async () => {
-    setLoadingList(true)
+  // Refs to avoid stale closures in intervals
+  const selectedTaskIdRef = useRef(null)
+  const selectedTaskRef = useRef(null)
+  selectedTaskIdRef.current = selectedTaskId
+  selectedTaskRef.current = selectedTask
+
+  // Load the task list (silent = skip loading spinner for background polls)
+  const loadTasks = useCallback(async (silent = false) => {
+    if (!silent) setLoadingList(true)
     setListError(null)
     try {
       const data = await fetchTasks()
@@ -21,20 +28,17 @@ export default function App() {
     } catch (err) {
       setListError(err.message)
     } finally {
-      setLoadingList(false)
+      if (!silent) setLoadingList(false)
     }
   }, [])
 
   // Load a single task's full detail
   const loadTask = useCallback(async (id) => {
-    setLoadingDetail(true)
     try {
       const data = await fetchTask(id)
       setSelectedTask(data)
     } catch (err) {
       console.error('Failed to load task detail:', err)
-    } finally {
-      setLoadingDetail(false)
     }
   }, [])
 
@@ -70,6 +74,24 @@ export default function App() {
   // Initial load
   useEffect(() => { loadTasks() }, [loadTasks])
 
+  // Poll task list every 3s
+  useEffect(() => {
+    const id = setInterval(() => loadTasks(true), 3000)
+    return () => clearInterval(id)
+  }, [loadTasks])
+
+  // Poll selected task detail every 2s, but only while it's in an active state
+  useEffect(() => {
+    const id = setInterval(() => {
+      const taskId = selectedTaskIdRef.current
+      const task = selectedTaskRef.current
+      if (!taskId) return
+      if (task && TERMINAL_STATES.has(task.state)) return
+      loadTask(taskId)
+    }, 2000)
+    return () => clearInterval(id)
+  }, [loadTask])
+
   return (
     <>
       <header className="app-header">
@@ -83,7 +105,6 @@ export default function App() {
           selectedTaskId={selectedTaskId}
           onSelect={selectTask}
           onSubmit={handleSubmit}
-          onRefresh={loadTasks}
           loading={loadingList}
           error={listError}
         />
@@ -91,8 +112,6 @@ export default function App() {
         {selectedTask ? (
           <TaskDetail
             task={selectedTask}
-            loading={loadingDetail}
-            onRefresh={() => loadTask(selectedTaskId)}
             onApprove={handleApprove}
             onReject={handleReject}
           />

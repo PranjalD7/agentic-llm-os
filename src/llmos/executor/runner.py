@@ -38,6 +38,13 @@ class Executor:
         self.timeout_seconds = timeout_seconds
         workspace_dir.mkdir(parents=True, exist_ok=True)
 
+    def list_workspace(self) -> list:
+        """Return names of files/dirs currently in the workspace directory."""
+        try:
+            return [p.name for p in self.workspace_dir.iterdir()]
+        except Exception:
+            return []
+
     def run(self, command: str) -> ExecutionResult:
         started_at = datetime.datetime.utcnow()
         timed_out = False

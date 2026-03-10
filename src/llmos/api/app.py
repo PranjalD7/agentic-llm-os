@@ -48,6 +48,8 @@ async def lifespan(app: FastAPI):
         task_queue=task_queue,
         approval_events=approval_events,
         approval_timeout_seconds=settings.approval_timeout_seconds,
+        max_steps_per_task=settings.max_steps_per_task,
+        step_retry_limit=settings.step_retry_limit,
     )
 
     thread = threading.Thread(target=worker.run, daemon=True, name="llmos-worker")

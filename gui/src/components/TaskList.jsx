@@ -27,7 +27,7 @@ function StateBadge({ state }) {
   return <span className={`badge badge-${cls}`}>{STATE_LABEL[state] ?? state}</span>
 }
 
-export default function TaskList({ tasks, selectedTaskId, onSelect, onSubmit, onRefresh, loading, error }) {
+export default function TaskList({ tasks, selectedTaskId, onSelect, onSubmit, loading, error }) {
   const [intent, setIntent] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
@@ -53,9 +53,10 @@ export default function TaskList({ tasks, selectedTaskId, onSelect, onSubmit, on
       {/* Panel header */}
       <div className="task-list-header">
         <h2>Tasks</h2>
-        <button className="btn btn-ghost" onClick={onRefresh} disabled={loading} style={{ fontSize: 12, padding: '4px 10px' }}>
-          {loading ? '...' : 'Refresh'}
-        </button>
+        <span style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 4px var(--green)' }} />
+          Live
+        </span>
       </div>
 
       {/* Submit form */}

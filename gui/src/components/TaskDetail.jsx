@@ -105,7 +105,7 @@ function StepCard({ step }) {
 
 // ── TaskDetail ────────────────────────────────────────────────────────
 
-export default function TaskDetail({ task, loading, onRefresh, onApprove, onReject }) {
+export default function TaskDetail({ task, onApprove, onReject }) {
   const shortId = task.id.slice(0, 8)
   const createdAt = new Date(task.created_at).toLocaleString()
 
@@ -118,14 +118,6 @@ export default function TaskDetail({ task, loading, onRefresh, onApprove, onReje
           <div className="meta">{shortId} · {createdAt}</div>
         </div>
         <StateBadge state={task.state} />
-        <button
-          className="btn btn-ghost"
-          onClick={onRefresh}
-          disabled={loading}
-          style={{ fontSize: 12, padding: '4px 10px' }}
-        >
-          {loading ? '…' : 'Reload'}
-        </button>
       </div>
 
       {/* Body */}

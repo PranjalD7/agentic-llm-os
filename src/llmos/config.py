@@ -18,5 +18,9 @@ class Settings(BaseSettings):
     llm_planner_enabled: bool = True
     llm_max_retries: int = 3
 
+    # Dynamic planning limits
+    max_steps_per_task: int = 20   # safety cap to prevent infinite loops
+    step_retry_limit: int = 2      # retries per failed step before giving up
+
 
 settings = Settings()

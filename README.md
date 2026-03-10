@@ -11,12 +11,13 @@ nlsh run "find all large files in my home directory and show a summary"
 ## How It Works
 
 1. **You describe a task in plain English** — e.g. `"compress all logs older than 30 days"`
-2. **The LLM Planner** (powered by a local [Ollama](https://ollama.com) model) decomposes it into ordered shell steps
+2. **The Iterative LLM Planner** (powered by a local [Ollama](https://ollama.com) model) decides one step at a time, seeing the real output of each command before planning the next
 3. **The Policy Engine** classifies each command as `SAFE`, `RISKY`, or `BLOCKED`
 4. **SAFE** commands execute automatically
 5. **RISKY** commands pause and ask you to approve or reject before running
 6. **BLOCKED** commands are refused outright
-7. A full audit trail of every task and step is stored in SQLite
+7. If a command fails, the planner automatically attempts to fix and retry it (up to `STEP_RETRY_LIMIT` times)
+8. A full audit trail of every task and step is stored in SQLite
 
 ```
 ┌─────────────┐    HTTP     ┌────────────────────────────────────────────┐
@@ -36,10 +37,12 @@ nlsh run "find all large files in my home directory and show a summary"
 ## Features
 
 - **Natural language → shell commands** via a local Ollama LLM (no data sent to the cloud)
+- **Iterative planning** — the LLM sees real command output before deciding the next step, not a fixed upfront plan
+- **Self-healing steps** — failed commands are automatically sent back to the LLM for a fix and retried
 - **Three-tier policy engine**: SAFE / RISKY / BLOCKED with configurable regex rules
 - **Human-in-the-loop approval** for risky operations — approve or reject interactively
 - **Full audit trail** in SQLite — every task, step, command, stdout, stderr, and exit code
-- **React GUI** — optional web UI at `localhost:5173`
+- **Live React GUI** — real-time auto-updating web UI at `localhost:5173` (no manual refresh needed)
 - **REST API** — everything is accessible via HTTP (see [API Reference](#api-reference))
 - **macOS-optimised** — LLM is prompted to use native macOS tools (`top -l`, `vm_stat`, `sysctl`, etc.)
 
@@ -64,26 +67,27 @@ src/llmos/
 ├── executor/
 │   └── runner.py         # subprocess runner (cwd = workspace/, captures stdout/stderr)
 ├── planner/
-│   └── llm.py            # LLMPlanner — calls Ollama /api/chat, parses JSON steps
+│   └── llm.py            # LLMPlanner — iterative (plan_next/fix_step) + legacy batch (plan)
 ├── policy/
 │   ├── engine.py         # PolicyEngine — evaluates commands against rules
 │   └── rules.py          # BLOCKED_PATTERNS and RISKY_PATTERNS (regex + reason)
 ├── schemas/
 │   ├── enums.py          # TaskState, StepState, RiskLevel enums
-│   ├── planner.py        # StepSpec (planner output schema)
+│   ├── planner.py        # StepSpec (batch) + PlannerResponse (iterative)
 │   └── task.py           # Pydantic request/response schemas
 └── worker/
-    └── loop.py           # Background thread: dequeues tasks, runs plan→policy→execute loop
+    └── loop.py           # Background thread: iterative plan→policy→execute loop with retries
 ```
 
 ### Task State Machine
 
 ```
-PENDING → PLANNING → RUNNING → SUCCESS
-                            ↘ AWAITING_APPROVAL → (approved) → RUNNING
-                                               → (rejected) → CANCELLED
-                            ↘ FAILED
-                            ↘ CANCELLED
+PENDING → PLANNING → RUNNING → (loop: plan_next → policy → execute)
+                                    ↘ AWAITING_APPROVAL → (approved) → back to RUNNING
+                                                       → (rejected) → CANCELLED
+                                    ↘ step failed → fix_step retry → back to RUNNING
+                                    ↘ planner returns done=true → SUCCESS
+                                    ↘ unrecoverable error → FAILED
 ```
 
 ---
@@ -129,12 +133,14 @@ Key variables:
 | `DAEMON_PORT` | `7777` | Port the daemon listens on |
 | `DATABASE_URL` | `sqlite:///./llmos.db` | SQLAlchemy database URL |
 | `WORKSPACE_DIR` | `./workspace` | Directory commands run inside |
-| `STEP_TIMEOUT_SECONDS` | `600` | Max seconds per command |
-| `APPROVAL_TIMEOUT_SECONDS` | `36000` | Seconds to wait for human approval |
+| `STEP_TIMEOUT_SECONDS` | `3000` | Max seconds per command |
+| `APPROVAL_TIMEOUT_SECONDS` | `360000` | Seconds to wait for human approval |
 | `LLM_PLANNER_ENABLED` | `true` | Use LLM planner (vs. fallback) |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | `qwen3-coder:30b` | Model name to use for planning |
 | `LLM_MAX_RETRIES` | `3` | Retry attempts on malformed LLM output |
+| `MAX_STEPS_PER_TASK` | `20` | Safety cap: max steps the iterative planner can take |
+| `STEP_RETRY_LIMIT` | `2` | Times a failed step is sent to the LLM for a fix before giving up |
 
 ### 4. Pull an Ollama model
 
@@ -319,5 +325,4 @@ This is a learning and exploration project. It is functional but not production-
 **Planned improvements:**
 - Multi-step rollback on failure
 - More granular policy scopes (per-directory, per-tool)
-- Web GUI task creation and approval
 - Support for Linux
