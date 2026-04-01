@@ -2,7 +2,6 @@ import datetime
 import os
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
 
 MAX_OUTPUT_BYTES = 1_048_576  # 1 MB
 
@@ -29,21 +28,11 @@ class ExecutionResult:
 
 class Executor:
     """
-    Runs shell commands inside the workspace directory.
-    Has zero knowledge of policy or risk levels — that's upstream.
+    Runs shell commands. Has zero knowledge of policy or risk levels — that's upstream.
     """
 
-    def __init__(self, workspace_dir: Path, timeout_seconds: int = 60):
-        self.workspace_dir = workspace_dir
+    def __init__(self, timeout_seconds: int = 60):
         self.timeout_seconds = timeout_seconds
-        workspace_dir.mkdir(parents=True, exist_ok=True)
-
-    def list_workspace(self) -> list:
-        """Return names of files/dirs currently in the workspace directory."""
-        try:
-            return [p.name for p in self.workspace_dir.iterdir()]
-        except Exception:
-            return []
 
     def run(self, command: str) -> ExecutionResult:
         started_at = datetime.datetime.utcnow()
@@ -55,7 +44,6 @@ class Executor:
             proc = subprocess.run(
                 command,
                 shell=True,
-                cwd=self.workspace_dir,
                 capture_output=True,
                 timeout=self.timeout_seconds,
                 text=True,

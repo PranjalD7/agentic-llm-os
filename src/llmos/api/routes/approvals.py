@@ -82,3 +82,32 @@ def reject_step(task_id: str, body: ApprovalIn, request: Request):
         event.set()
 
     return result
+
+
+_CANCELLABLE_STATES = {TaskState.PENDING, TaskState.PLANNING, TaskState.RUNNING, TaskState.AWAITING_APPROVAL}
+
+
+@router.post("/{task_id}/cancel", response_model=TaskOut)
+def cancel_task(task_id: str, request: Request):
+    with _get_session(request) as session:
+        task = session.get(TaskRecord, task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        if task.state not in _CANCELLABLE_STATES:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Task cannot be cancelled in state: {task.state}",
+            )
+
+        task.state = TaskState.CANCELLED
+        task.updated_at = datetime.datetime.utcnow()
+        session.commit()
+        session.refresh(task)
+        result = TaskOut.model_validate(task)
+
+    # Unblock worker if it's waiting for approval
+    event = request.app.state.approval_events.get(task_id)
+    if event:
+        event.set()
+
+    return result

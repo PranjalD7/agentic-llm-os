@@ -105,9 +105,12 @@ function StepCard({ step }) {
 
 // ── TaskDetail ────────────────────────────────────────────────────────
 
-export default function TaskDetail({ task, onApprove, onReject }) {
+const ACTIVE_STATES = new Set(['PENDING', 'PLANNING', 'RUNNING', 'AWAITING_APPROVAL'])
+
+export default function TaskDetail({ task, onApprove, onReject, onCancel }) {
   const shortId = task.id.slice(0, 8)
   const createdAt = new Date(task.created_at).toLocaleString()
+  const canCancel = ACTIVE_STATES.has(task.state)
 
   return (
     <div className="task-detail-panel">
@@ -118,6 +121,15 @@ export default function TaskDetail({ task, onApprove, onReject }) {
           <div className="meta">{shortId} · {createdAt}</div>
         </div>
         <StateBadge state={task.state} />
+        {canCancel && (
+          <button
+            className="btn btn-danger"
+            onClick={onCancel}
+            style={{ fontSize: 12, padding: '4px 10px' }}
+          >
+            Kill
+          </button>
+        )}
       </div>
 
       {/* Body */}

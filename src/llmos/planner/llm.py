@@ -6,50 +6,9 @@ from typing import Dict, List, Optional
 import httpx
 from pydantic import ValidationError
 
-from ..schemas.planner import PlannerResponse, StepSpec
+from ..schemas.planner import PlannerResponse
 
 logger = logging.getLogger("llmos.planner.llm")
-
-# ── Batch planning (legacy, kept for backward compat) ─────────────────────────
-
-SYSTEM_PROMPT = """\
-You are a task planning assistant for a supervised macOS automation system.
-Given a natural-language intent, return a single JSON object containing
-an ordered list of shell commands that accomplish the intent completely.
-
-Rules:
-- Output ONLY the JSON object — no explanation, no markdown, no commentary
-- Use python3, not python. Use python3 -m pip, not bare pip
-- Use commands compatible with macOS zsh/bash
-- Prefer built-in macOS tools: top -l, vm_stat, sysctl, ps, df, du, ifconfig, networksetup, osascript
-- Never use Linux-only tools: free, mpstat, apt, systemctl, service
-- Homebrew (brew) is already installed — never install it, never use its install script
-- For brew installs, always prefix with environment flags to avoid any prompts:
-  HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INTERACTIVE=1 brew install <pkg>
-- Never use curl | bash, wget | bash, or $( curl ... ) patterns
-- Never run commands that require a TTY or interactive prompts (no sudo, no passwd, no read)
-- Never open GUI applications or use open/osascript to launch apps
-
-"""
-
-STEP_LIST_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "steps": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "order":       {"type": "integer"},
-                    "description": {"type": "string"},
-                    "command":     {"type": "string"},
-                },
-                "required": ["order", "description", "command"],
-            },
-        }
-    },
-    "required": ["steps"],
-}
 
 # ── Iterative planning ─────────────────────────────────────────────────────────
 
@@ -80,6 +39,9 @@ Critical rules:
 - Never use curl | bash, wget | bash patterns
 - Never run commands that require a TTY or interactive prompts (no sudo, no passwd, no read)
 - Never open GUI applications
+- When searching for files or directories with find, always scope to $HOME (not /Users or /),
+  and always append 2>/dev/null to suppress permission errors on protected macOS paths
+  (e.g. find "$HOME" -type d -name '*foo*' 2>/dev/null)
 
 """
 
@@ -108,6 +70,7 @@ Rules:
 - Fix only the specific error shown — do not rewrite unrelated logic
 - Use macOS-compatible commands (zsh/bash)
 - Never use interactive flags that require a TTY
+- If the error is "Operation not permitted" from find, scope it to $HOME and add 2>/dev/null
 - Output ONLY valid JSON — no explanation, no markdown
 
 """
@@ -124,7 +87,6 @@ class LLMPlanner:
     Planner that calls a local Ollama instance.
 
     Two modes:
-      - plan()      — legacy batch planning (all steps at once)
       - plan_next() — iterative: returns the next single step given history
       - fix_step()  — repair: returns a corrected command after a failure
     """
@@ -296,47 +258,6 @@ class LLMPlanner:
 
         raise RuntimeError(f"fix_step exhausted {self.max_retries} retries")
 
-    # ── Legacy batch API ───────────────────────────────────────────────────────
-
-    def plan(self, intent: str) -> List[StepSpec]:
-        """
-        Legacy: plan all steps at once. Kept for backward compatibility.
-        Prefer plan_next() for new code.
-        """
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": intent},
-        ]
-        raw = ""
-        for attempt in range(self.max_retries):
-            try:
-                raw = self._call_ollama(messages, STEP_LIST_SCHEMA)
-                logger.debug(f"Ollama raw response: {raw}")
-                return self._parse_step_list(raw)
-
-            except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as e:
-                raise RuntimeError(f"Ollama unavailable: {type(e).__name__}: {e}") from e
-
-            except (json.JSONDecodeError, ValidationError, KeyError) as e:
-                if attempt == self.max_retries - 1:
-                    raise RuntimeError(
-                        f"LLMPlanner failed after {self.max_retries} attempt(s): "
-                        f"{type(e).__name__}: {e}"
-                    ) from e
-
-                logger.debug(f"Attempt {attempt + 1} failed ({e}), retrying with correction")
-                messages.append({"role": "assistant", "content": raw})
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        f"Invalid output. Error: {type(e).__name__}: {e}. "
-                        f'Expected: {{"steps": [{{"order": 1, "description": "...", "command": "..."}}]}}\n'
-                        f"Output ONLY valid JSON."
-                    ),
-                })
-
-        raise RuntimeError(f"LLMPlanner exhausted {self.max_retries} retries without a valid response")
-
     # ── Internal helpers ───────────────────────────────────────────────────────
 
     def _call_ollama(self, messages: list, schema: dict) -> str:
@@ -359,7 +280,3 @@ class LLMPlanner:
         data = json.loads(cleaned)
         return PlannerResponse(**data)
 
-    def _parse_step_list(self, raw: str) -> List[StepSpec]:
-        cleaned = _strip_think(raw)
-        data = json.loads(cleaned)
-        return [StepSpec(**s) for s in data["steps"]]

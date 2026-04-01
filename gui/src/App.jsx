@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchTasks, fetchTask, createTask, approveTask, rejectTask } from './api'
+import { fetchTasks, fetchTask, createTask, approveTask, rejectTask, cancelTask } from './api'
 import TaskList from './components/TaskList'
 import TaskDetail from './components/TaskDetail'
 
@@ -71,6 +71,14 @@ export default function App() {
     loadTasks()
   }, [selectedTaskId, loadTask, loadTasks])
 
+  // Kill a running/pending task
+  const handleCancel = useCallback(async () => {
+    if (!selectedTaskId) return
+    await cancelTask(selectedTaskId)
+    loadTask(selectedTaskId)
+    loadTasks()
+  }, [selectedTaskId, loadTask, loadTasks])
+
   // Initial load
   useEffect(() => { loadTasks() }, [loadTasks])
 
@@ -96,7 +104,7 @@ export default function App() {
     <>
       <header className="app-header">
         <span className="dot" />
-        <h1>LLMOS</h1>
+        <h1>ShellMind</h1>
       </header>
 
       <div className="app-body">
@@ -114,6 +122,7 @@ export default function App() {
             task={selectedTask}
             onApprove={handleApprove}
             onReject={handleReject}
+            onCancel={handleCancel}
           />
         ) : (
           <div className="no-task-selected">

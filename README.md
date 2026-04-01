@@ -1,6 +1,6 @@
-# Agentic LLM OS
+# ShellMind
 
-A local, privacy-first task automation system that converts natural language into shell commands, executes them safely, and keeps a human in the loop for any risky operations.
+A local, privacy-first task automation system that converts natural language into shell commands, executes them safely, and keeps a human in the loop for any risky operations. Ships as a native macOS desktop app.
 
 ```
 nlsh run "find all large files in my home directory and show a summary"
@@ -20,29 +20,29 @@ nlsh run "find all large files in my home directory and show a summary"
 8. A full audit trail of every task and step is stored in SQLite
 
 ```
-┌─────────────┐    HTTP     ┌────────────────────────────────────────────┐
-│  nlsh CLI   │ ──────────▶ │              llmos-daemon (FastAPI)        │
-│  (Typer +   │             │  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
-│   Rich)     │ ◀────────── │  │ LLM      │  │ Policy   │  │ Executor │ │
-└─────────────┘             │  │ Planner  │  │ Engine   │  │ Runner   │ │
-                            │  └──────────┘  └──────────┘  └──────────┘ │
-┌─────────────┐             │              Worker Thread                 │
-│  React GUI  │ ──────────▶ │                                            │
-│  (Vite)     │ ◀────────── │              SQLite (audit log)            │
-└─────────────┘             └────────────────────────────────────────────┘
+┌──────────────────┐    HTTP     ┌────────────────────────────────────────────┐
+│  ShellMind       │ ──────────▶ │              llmos-daemon (FastAPI)        │
+│  Desktop App     │             │  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
+│  (Tauri + React) │ ◀────────── │  │ LLM      │  │ Policy   │  │ Executor │ │
+└──────────────────┘             │  │ Planner  │  │ Engine   │  │ Runner   │ │
+                                 │  └──────────┘  └──────────┘  └──────────┘ │
+┌─────────────┐                  │              Worker Thread                 │
+│  nlsh CLI   │ ──────────────▶  │                                            │
+│  (Typer)    │ ◀────────────── │              SQLite (audit log)            │
+└─────────────┘                  └────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Features
 
+- **Native macOS desktop app** — lives in the menu bar, toggle with `Cmd+Shift+Space` or the tray icon
 - **Natural language → shell commands** via a local Ollama LLM (no data sent to the cloud)
 - **Iterative planning** — the LLM sees real command output before deciding the next step, not a fixed upfront plan
 - **Self-healing steps** — failed commands are automatically sent back to the LLM for a fix and retried
 - **Three-tier policy engine**: SAFE / RISKY / BLOCKED with configurable regex rules
 - **Human-in-the-loop approval** for risky operations — approve or reject interactively
 - **Full audit trail** in SQLite — every task, step, command, stdout, stderr, and exit code
-- **Live React GUI** — real-time auto-updating web UI at `localhost:5173` (no manual refresh needed)
 - **REST API** — everything is accessible via HTTP (see [API Reference](#api-reference))
 - **macOS-optimised** — LLM is prompted to use native macOS tools (`top -l`, `vm_stat`, `sysctl`, etc.)
 
@@ -65,18 +65,26 @@ src/llmos/
 │   ├── engine.py         # SQLAlchemy engine + session factory
 │   └── models.py         # Task and Step ORM models
 ├── executor/
-│   └── runner.py         # subprocess runner (cwd = workspace/, captures stdout/stderr)
+│   └── runner.py         # subprocess runner (captures stdout/stderr)
 ├── planner/
-│   └── llm.py            # LLMPlanner — iterative (plan_next/fix_step) + legacy batch (plan)
+│   └── llm.py            # LLMPlanner — iterative plan_next/fix_step via Ollama
 ├── policy/
 │   ├── engine.py         # PolicyEngine — evaluates commands against rules
 │   └── rules.py          # BLOCKED_PATTERNS and RISKY_PATTERNS (regex + reason)
 ├── schemas/
 │   ├── enums.py          # TaskState, StepState, RiskLevel enums
-│   ├── planner.py        # StepSpec (batch) + PlannerResponse (iterative)
+│   ├── planner.py        # PlannerResponse schema
 │   └── task.py           # Pydantic request/response schemas
 └── worker/
     └── loop.py           # Background thread: iterative plan→policy→execute loop with retries
+
+gui/
+├── src/                  # React frontend (Vite)
+└── src-tauri/            # Tauri desktop shell (Rust)
+    ├── src/
+    │   ├── main.rs       # App lifecycle, tray icon, global shortcut, daemon management
+    │   └── voice.rs      # macOS NSSpeechRecognizer wake word + Whisper transcription
+    └── tauri.conf.json
 ```
 
 ### Task State Machine
@@ -96,8 +104,9 @@ PENDING → PLANNING → RUNNING → (loop: plan_next → policy → execute)
 
 - Python ≥ 3.9
 - [Ollama](https://ollama.com) running locally with a compatible model pulled
-- macOS (designed and tested on macOS; Linux support is partial)
-- Node.js ≥ 18 *(only if you want the React GUI)*
+- macOS (designed and tested on macOS)
+- Node.js ≥ 18
+- Rust + [Tauri CLI](https://tauri.app) *(for building the desktop app)*
 
 ---
 
@@ -106,7 +115,7 @@ PENDING → PLANNING → RUNNING → (loop: plan_next → policy → execute)
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/your-username/agentic-llm-os.git
+git clone https://github.com/PranjalD7/agentic-llm-os.git
 cd agentic-llm-os
 ```
 
@@ -132,10 +141,8 @@ Key variables:
 | `DAEMON_HOST` | `127.0.0.1` | Host the daemon binds to |
 | `DAEMON_PORT` | `7777` | Port the daemon listens on |
 | `DATABASE_URL` | `sqlite:///./llmos.db` | SQLAlchemy database URL |
-| `WORKSPACE_DIR` | `./workspace` | Directory commands run inside |
 | `STEP_TIMEOUT_SECONDS` | `3000` | Max seconds per command |
 | `APPROVAL_TIMEOUT_SECONDS` | `360000` | Seconds to wait for human approval |
-| `LLM_PLANNER_ENABLED` | `true` | Use LLM planner (vs. fallback) |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | `qwen3-coder:30b` | Model name to use for planning |
 | `LLM_MAX_RETRIES` | `3` | Retry attempts on malformed LLM output |
@@ -158,16 +165,24 @@ Update `OLLAMA_MODEL` in your `.env` to match.
 
 ## Usage
 
-### Start the daemon
+### Desktop App
 
 ```bash
-llmos-daemon
-# Daemon running at http://127.0.0.1:7777
+cd gui
+npm install
+npx tauri dev
 ```
 
-### Run tasks with `nlsh`
+The app lives in the menu bar. Use `Cmd+Shift+Space` to toggle the window, or click the tray icon.
+
+The Python daemon starts and stops automatically with the app.
+
+### CLI
 
 ```bash
+# Start the daemon manually (if not using the desktop app)
+llmos-daemon
+
 # Submit a task and watch it run
 nlsh run "show me disk usage by directory in my home folder"
 
@@ -204,24 +219,15 @@ Steps (2):
   [ ] ✓  1. Check available disk space
          $ df -h
          exit=0
-         │ Filesystem      Size   Used  Avail Capacity  iMount
+         │ Filesystem      Size   Used  Avail Capacity  Mount
          │ /dev/disk3s1s1  460G   112G   180G    39%    /
 
   [ ] ✓  2. Check memory usage
          $ vm_stat | head -20
          exit=0
          │ Mach Virtual Memory Statistics: (page size of 16384 bytes)
-         │ Pages free:                      12345.
+         │ Pages free: 12345.
          ...
-```
-
-### Start the React GUI (optional)
-
-```bash
-cd gui
-npm install
-npm run dev
-# Open http://localhost:5173
 ```
 
 ---
@@ -311,18 +317,5 @@ Test modules:
 | File | What it tests |
 |---|---|
 | `tests/test_policy.py` | Policy engine rule matching |
-| `tests/test_planner.py` | Heuristic planner step generation |
-| `tests/test_llm_planner.py` | LLM planner (mocked Ollama responses) |
 | `tests/test_executor.py` | Subprocess executor (stdout, stderr, exit codes) |
 | `tests/test_api.py` | FastAPI routes via TestClient |
-
----
-
-## Project Status
-
-This is a learning and exploration project. It is functional but not production-hardened. Contributions and bug reports are welcome.
-
-**Planned improvements:**
-- Multi-step rollback on failure
-- More granular policy scopes (per-directory, per-tool)
-- Support for Linux

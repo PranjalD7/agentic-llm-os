@@ -252,6 +252,12 @@ class WorkerLoop:
 
                 logger.info(f"Task {task_id} step {order}: SUCCESS (exit={result.exit_code})")
 
+                # Check if the task was cancelled externally (e.g. via the GUI)
+                session.refresh(task)
+                if task.state == TaskState.CANCELLED:
+                    logger.info(f"Task {task_id}: cancelled externally after step {order}")
+                    return
+
                 # Refresh workspace context after each step (files may have been created)
                 workspace_context["files"] = self.executor.list_workspace()
 

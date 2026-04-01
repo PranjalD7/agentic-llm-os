@@ -40,3 +40,7 @@ export function rejectTask(id, comment = '') {
     body: JSON.stringify({ decision: 'REJECTED', comment: comment || null }),
   })
 }
+
+export function cancelTask(id) {
+  return request(`/tasks/${id}/cancel`, { method: 'POST' })
+}

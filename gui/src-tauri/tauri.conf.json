@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/v2/packages/tauri-utils/schema.json",
+  "productName": "ShellMind",
+  "version": "0.1.0",
+  "identifier": "com.llmos.app",
+  "build": {
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../dist",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "ShellMind",
+        "width": 900,
+        "height": 600,
+        "decorations": false,
+        "visible": false,
+        "center": true,
+        "resizable": true,
+        "alwaysOnTop": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ],
+    "macOS": {
+      "files": {
+        "MacOS/voice-dictation-helper": "resources/macos/voice-dictation-helper"
+      }
+    }
+  },
+  "plugins": {}
+}

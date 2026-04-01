@@ -31,7 +31,6 @@ async def lifespan(app: FastAPI):
 
     # Build core components
     executor = Executor(
-        workspace_dir=settings.workspace_dir.resolve(),
         timeout_seconds=settings.step_timeout_seconds,
     )
     planner = LLMPlanner(
@@ -72,7 +71,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )

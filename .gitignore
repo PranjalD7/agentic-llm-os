@@ -46,6 +46,13 @@ gui/node_modules/
 gui/dist/
 gui/.vite/
 
+# Tauri build artifacts
+gui/src-tauri/target/
+gui/src-tauri/resources/macos/swift-module-cache/
+
+# Whisper model files (large binaries — download separately)
+gui/src-tauri/resources/models/*.bin
+
 # Workspace output (runtime-generated files)
 workspace/
 
